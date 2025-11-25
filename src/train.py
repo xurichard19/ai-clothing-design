@@ -1,35 +1,30 @@
 import os
 import csv
-import file_operations
+import trainingdata
+import dataset
 import torch
 from transformers import CLIPProcessor, CLIPModel, get_scheduler
 from PIL import Image
+from tqdm import tqdm
 
 def main():
-    # generate split files if not available
-    labels = file_operations.Labels()
-    if not os.path.exists("./outputs/train.csv"):
-        file_operations.Split(labels, "train")
-    if not os.path.exists("./outputs/val.csv"):
-        file_operations.Split(labels, "val")
-
-    train_data = load_csv("train")
-    val_data = load_csv("val")
+    train_data = dataset.Dataset("train")
+    val_data = dataset.Dataset("val")
 
     model, processor = load_model()
 
     NUM_EPOCHS = 10
-    BATCH_SIZE = 50
+    BATCH_SIZE = 100
 
     train_loader = torch.utils.data.DataLoader(
-        train_data, 
-        batch_size=BATCH_SIZE, 
-        shuffle=True, 
+        train_data,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
         collate_fn=lambda examples: collate(examples, processor)
         )
     val_loader = torch.utils.data.DataLoader(
-        val_data, 
-        batch_size=BATCH_SIZE, 
+        val_data,
+        batch_size=BATCH_SIZE,
         collate_fn=lambda examples: collate(examples, processor)
         )
 
@@ -44,36 +39,41 @@ def main():
         model.train()
         total_train_loss = 0.0
 
-        for batch in train_loader:
+        train_loop = tqdm(train_loader, desc=f"epoch {epoch+1} training")
+        for batch in train_loop:
             batch = {k: v.to(device) for k,v in batch.items()}
             outputs = model(**batch, return_loss=True)
             loss = outputs.loss
+            total_train_loss += loss.item()
+
             loss.backward()
             optimizer.step()
             lr_scheduler.step()
             optimizer.zero_grad()
-            total_train_loss += loss.item()
-        avg_train_loss = total_train_loss / len(train_loader)
+
+            if train_loop.n > 0:
+                avg_train_loss = total_train_loss / train_loop.n
+                train_loop.set_postfix(loss=avg_train_loss)
 
         model.eval()
         total_val_loss = 0
         with torch.no_grad():
-            for batch in val_loader:
+
+            val_loop = tqdm(train_loader, desc=f"epoch {epoch+1} validation")
+            for batch in val_loop:
                 batch = {k: v.to(device) for k,v in batch.items()}
                 outputs = model(**batch, return_loss=True)
                 total_val_loss += outputs.loss.item()
-        avg_val_loss = total_val_loss / len(val_loader)
-        print(f'epoch {epoch} with train loss {avg_train_loss} and val loss {avg_val_loss}')
+
+                if val_loop.n > 0:
+                    avg_val_loss = total_val_loss / val_loop.n
+                    val_loop.set_postfix(loss=avg_val_loss)
+
+        print(f'completed epoch {epoch+1}')
 
     model.save_pretrained("./models/")
     processor.save_pretrained("./models/processors/")
-    
-def load_csv(split: str) -> list[dict]:
-    file = f"./outputs/{split}.csv"
-    with open(file, 'r') as f:
-        reader = csv.DictReader(f)
-        data = [{"image": row["image"], "caption": row["caption"]} for row in reader]
-    return data
+    print("saved model")
 
 def load_model(model_name="openai/clip-vit-base-patch32") -> list[CLIPModel, CLIPProcessor]:
     # load model and processor
@@ -82,13 +82,16 @@ def load_model(model_name="openai/clip-vit-base-patch32") -> list[CLIPModel, CLI
 
     # freeze parameters
     for name, param in model.named_parameters():
-        if name in {"text_projection", "visual_projection", "logit_scale"}: param.requires_grad = True
+        # unfreeze final layers
+        if name in {"text_projection.weight", "visual_projection.weight", "logit_scale"}: param.requires_grad = True
+        # unfreeze abstract visual layers
+        elif "vision_model.encoder.layers.11" in name or "vision_model.encoder.layers.10" in name: param.requires_grad = True
         else: param.requires_grad = False
 
     return model, processor
 
 def setup_optimizer(train_loader: torch.utils.data.DataLoader, model: CLIPModel, epochs: int):
-    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-6)
+    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()))
     training_steps = epochs * len(train_loader)
     lr_scheduler = get_scheduler(
         "cosine",
@@ -98,9 +101,9 @@ def setup_optimizer(train_loader: torch.utils.data.DataLoader, model: CLIPModel,
     )
     return optimizer, lr_scheduler
 
-def collate(examples, processor: CLIPProcessor):
-    texts = [example["caption"] for example in examples]
-    images = [Image.open('./data/df-training-data/' + example["image"]) for example in examples]
+def collate(samples, processor: CLIPProcessor):
+    images = [sample[0] for sample in samples]
+    texts = [sample[1] for sample in samples]
     return processor(images, texts, return_tensors="pt", padding=True, truncation=True)
 
 if __name__ == "__main__":
