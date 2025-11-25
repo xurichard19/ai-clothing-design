@@ -2,3 +2,4 @@
 .env
 /data/df-training-data
 /outputs
+/models

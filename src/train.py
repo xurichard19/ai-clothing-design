@@ -36,8 +36,8 @@ def main():
         collate_fn=lambda examples: collate(examples, processor)
         )
 
-    LEARNING_RATE = 0.0001
-    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE)
+    LEARNING_RATE = 1e-6
+    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE, weight_decay=0.001)
     training_steps = NUM_EPOCHS * len(train_loader)
     lr_scheduler = get_scheduler(
         "cosine",
@@ -52,11 +52,11 @@ def main():
     model.to(device)
 
     # TRAINING LOOP
+    best_loss = float('inf')
     for epoch in range(NUM_EPOCHS):
         print(f"epoch {epoch+1}")
         model.train()
         total_train_loss = 0.0
-
         train_loop = tqdm(train_loader, desc="training")
         for batch in train_loop:
             batch = {k: v.to(device) for k,v in batch.items()}
@@ -69,9 +69,8 @@ def main():
             lr_scheduler.step()
             optimizer.zero_grad()
 
-            if train_loop.n > 0:
-                avg_train_loss = total_train_loss / train_loop.n
-                train_loop.set_postfix(loss=avg_train_loss)
+            avg_train_loss = total_train_loss / (train_loop.n + 1)
+            train_loop.set_postfix(loss=f"{avg_train_loss:.4f}")
 
         model.eval()
         total_val_loss = 0
@@ -82,13 +81,15 @@ def main():
                 outputs = model(**batch, return_loss=True)
                 total_val_loss += outputs.loss.item()
 
-                if val_loop.n > 0:
-                    avg_val_loss = total_val_loss / val_loop.n
-                    val_loop.set_postfix(loss=avg_val_loss)
+                avg_val_loss = total_val_loss / (val_loop.n + 1)
+                val_loop.set_postfix(loss=f"{avg_val_loss:.4f}")
 
-    model.save_pretrained("./models/")
-    processor.save_pretrained("./models/processors/")
-    print("saved model")
+        avg_val_loss = total_val_loss / len(val_loop)
+        if avg_val_loss < best_loss:
+            best_loss = avg_val_loss
+            model.save_pretrained("./models/")
+            processor.save_pretrained("./models/processors/")
+    print(f"completed training with best validation loss of {best_loss}")
 
 def collate(samples, processor: CLIPProcessor):
     images = [sample[0] for sample in samples]
