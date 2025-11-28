@@ -1,8 +1,12 @@
+"""
+utilities file for training data compilation, for use with dataset.py and train.py
+"""
+
 import pandas as pd
 
 class Labels:
     """
-    Store label annotations in object (only one instance required).
+    store label annotations in object (only one instance required).
     """
 
     @staticmethod
@@ -25,7 +29,7 @@ class Labels:
 
 class Split:
     """
-    Store captions and label data for any given split (train/val/test)
+    store captions and label data for any given split (train/val/test)
     """
 
     def load_file(self) -> list:

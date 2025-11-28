@@ -1,5 +1,5 @@
 .DS_Store
 .env
-/data/df-training-data
+/data
 /outputs
 /models

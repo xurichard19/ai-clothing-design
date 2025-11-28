@@ -1,3 +1,7 @@
+"""
+utilities file for generating pytorch compatible datasets
+"""
+
 import csv
 import os
 from PIL import Image

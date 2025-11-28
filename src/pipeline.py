@@ -1,20 +1,82 @@
-# TIMELINE:
-# 1) data preprocessing and selection (DeepFashion data set + gathered)
-# 2) fine tuned CLIP (not zero shot)
-# 3) LLM
-# 4) diffusion
-
+from dotenv import load_dotenv
+import json
+import os
+from openai import OpenAI
+from PIL import Image
+import predict
 import torch
-from transformers import pipeline
+from transformers import CLIPProcessor, CLIPModel
+from tqdm import tqdm
 
-clip = pipeline(
-   task="zero-shot-image-classification",
-   model="openai/clip-vit-base-patch32",
-   dtype=torch.bfloat16,
-   device=0
-)
-labels = ["balenciaga", "acne studios", "our legacy", "givenchy", "supreme", "celine"]
-url = "https://scontent-atl3-1.cdninstagram.com/v/t51.82787-15/550217220_18080737532496810_6198471278833621107_n.jpg?stp=dst-jpg_e35_p750x750_sh0.08_tt6&_nc_cat=106&ig_cache_key=MzcyNDQwNjk1ODU4Njk1Njg5MQ%3D%3D.3-ccb1-7&ccb=1-7&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6InhwaWRzLjExNzl4MTQ5MS5zZHIuQzMifQ%3D%3D&_nc_ohc=ojcQfzMi1l0Q7kNvwH7oMmc&_nc_oc=AdkCYtRF90hYhDAFKHUfKejUG-95U66LADpibPn_PwJTonlX3sg9tWqSeAGBgA4q9EI&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scontent-atl3-1.cdninstagram.com&_nc_gid=PSjKzTGMn8bOPNchDcHnNA&oh=00_Affwv3XCnZBdFs_2pjhyzH4uFmxQPjKUEGAXDpokqrkv1w&oe=68E60A50"
-result = clip(url, candidate_labels=labels)
-print("")
-print(result)
+def main():
+    load_dotenv()
+
+    # load pretrained model and processor from train.py
+    model = CLIPModel.from_pretrained("./models")
+    processor = CLIPProcessor.from_pretrained("./models/processors")
+
+    # for computing cluster
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"using {device}")
+    model.to(device)
+    model.eval()
+
+    # generate tensors for each sample image
+    results = {}
+    samples = [sample for sample in os.listdir("./data/custom-data") if sample != ".DS_Store"]
+    predict_loop = tqdm(samples, desc="gathering sample image tensors")
+    for sample in predict_loop:
+        tensor = predict.get_tensor(model, processor, device, "./data/custom-data/" + sample)
+        results[sample] = tensor
+
+    # get largest kmeans cluster
+    representative = predict.get_representative(results, device)
+
+    # generate tensors for captions
+    caption_sets = {}
+    for file in os.listdir("./data/captions"):
+        if file == ".DS_Store": continue
+        caption_sets[file[:-4]] = predict.generate_caption_tensors(model, processor, device, "./data/captions/" + file)
+    
+    # calculate cosine similarity for each caption
+    similarity_dict = {}
+    for captions in caption_sets.values():
+        similarity_dict = similarity_dict | predict.generate_similarity(model, processor, device, representative, captions)
+
+    # select top captions
+    sorted_similarity = sorted(similarity_dict.items(), key=lambda item: item[1], reverse=True)
+    top_captions = [caption[0] for caption in sorted_similarity[:len(similarity_dict) // 7]]
+    print(f"\nselected {len(top_captions)} captions with similarity scores of {similarity_dict[top_captions[0]]} to {similarity_dict[top_captions[-1]]}")
+
+    # send top captions to OpenAI for a natural language prompt
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    response = client.responses.create(
+        model="gpt-4o-mini",
+        input=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a fashion designer who utilizes diffusion models to generate quality designs. "
+                    "Given a list of captions describing a set of fashion images, generate a design for a single "
+                    "piece of clothing you feel best encapsulates the overall theme of the images. You are "
+                    "welcome to use fashion specific terms to describe your design."
+
+                    "Your prompt will be sent to a diffusion model to generate the actual design. Only respond "
+                    "with the design idea and key features that you would like to see in the final product. "
+                    "In the explanation of the design idea, you should summarize key information and explicitly "
+                    "state that you are prompting the model to generate a clothing design. You should format the "
+                    "response as if you were prompting the diffusion model yourself. Do not include any "
+                    "pleasantries or anything of the sort."
+                )
+            },
+            {
+                "role": "user",
+                "content": json.dumps({"captions": top_captions})
+            }
+        ]
+    )
+    print("\nOPENAI RESPONSE\n")
+    print(response.output_text)
+
+if __name__ == "__main__":
+    main()
