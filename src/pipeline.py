@@ -1,16 +1,17 @@
 from dotenv import load_dotenv
 import json
-import numpy as np
 import os
 from openai import OpenAI
 from PIL import Image
-from sklearn.cluster import KMeans
+import predict
 import torch
 from transformers import CLIPProcessor, CLIPModel
 from tqdm import tqdm
-import predict
 
 def main():
+    load_dotenv()
+
+    # load pretrained model and processor from train.py
     model = CLIPModel.from_pretrained("./models")
     processor = CLIPProcessor.from_pretrained("./models/processors")
 
@@ -22,35 +23,36 @@ def main():
 
     results = {}
     samples = [sample for sample in os.listdir("./data/custom-data") if sample != ".DS_Store"]
-    print(f"\npredicting {len(samples)} images...\n")
 
     predict_loop = tqdm(samples, desc="prediction")
     for sample in predict_loop:
         tensor = predict.get_tensor(model, processor, device, "./data/custom-data/" + sample)
         results[sample] = tensor
 
-    # find kmeans clusters for trend analysis
-    tensors = np.array(list(results.values()))
-    kmeans = KMeans(n_clusters=5)
-    labels = kmeans.fit_predict(tensors)
-    centroids = kmeans.cluster_centers_
-
-    # normalize
-    centroids /= np.linalg.norm(centroids, axis=1, keepdims=True)
-
-    # find largest cluster by size (representative)
-    unique, count = np.unique(labels, return_counts=True)
-    largest_index = unique[np.argmax(count)]
-    cluster = torch.tensor(centroids[largest_index], dtype=torch.float32).to(device)
-
+    representative = predict.get_representative(results, device)
     captions = {}
     for file in os.listdir("./data/captions"):
         captions[file[:-4]] = predict.generate_caption_tensors(model, processor, device, "./data/captions/" + file)
-    image_tensor = predict.get_tensor(model, processor, device, "./data/sample.png")
 
     final = []
     for i in captions.values():
-        final+=predict.select_top_captions(model, processor, device, cluster, i)
+        final += predict.select_top_captions(model, processor, device, representative, i)
 
-if __name__ == "__main__":
-    main()
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    response = client.responses.create(
+        model="gpt-4o-mini",
+        input=[
+            {
+                "role": "system",
+                "content": (
+                    ""
+                )
+            },
+            {
+                "role": "user",
+                "content": json.dumps({"captions": final})
+            }
+        ]
+    )
+    print("\nOPENAI RESPONSE\n")
+    print(response.output_text)
