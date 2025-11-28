@@ -49,7 +49,7 @@ def generate_caption_tensors(model: CLIPModel, processor: CLIPProcessor, device:
             captions[caption] = tensor[0]
     return captions
 
-def select_top_captions(model: CLIPModel, processor: CLIPProcessor, device: torch.device, tensor: torch.Tensor, captions: dict) -> list:
+def generate_similarity(model: CLIPModel, processor: CLIPProcessor, device: torch.device, tensor: torch.Tensor, captions: dict) -> dict:
     # calculate cosine similarity between image and captions to select best fitting captions
 
     candidate_captions = {}
