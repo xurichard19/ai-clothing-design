@@ -1,0 +1,15 @@
+A slim fit clothing piece
+A regular fit clothing piece
+An oversized clothing piece
+A cropped clothing piece
+A high-waisted pant
+A low-rise pant
+A wide-leg pant
+A straight-leg pant
+A bootcut pant
+A relaxed fit clothing piece
+A fitted clothing piece
+A baggy clothing piece
+A tapered clothing piece
+A flared clothing piece
+A boxy fit clothing piece

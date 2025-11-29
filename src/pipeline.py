@@ -1,4 +1,4 @@
-from diffusers import StableDiffusionPipeline
+from diffusers import DiffusionPipeline
 from dotenv import load_dotenv
 import json
 import os
@@ -45,7 +45,7 @@ def main():
 
     # select top captions
     sorted_similarity = sorted(similarity_dict.items(), key=lambda item: item[1], reverse=True)
-    top_captions = [caption[0] for caption in sorted_similarity[:len(similarity_dict) // 7]]
+    top_captions = [caption[0] for caption in sorted_similarity[:len(similarity_dict) // 9]]
     print(f"\nselected {len(top_captions)} captions with similarity scores of {similarity_dict[top_captions[0]]} to {similarity_dict[top_captions[-1]]}")
 
     # send top captions to OpenAI for a natural language prompt
@@ -64,9 +64,9 @@ def main():
                     "Your prompt will be sent to a diffusion model to generate the actual design. Only respond "
                     "with the design idea and key features that you would like to see in the final product. "
                     "In the explanation of the design idea, you should summarize key information and explicitly "
-                    "state that you are prompting the model to generate a clothing design. You should format the "
-                    "response as if you were prompting the diffusion model yourself. Do not include any "
-                    "pleasantries or anything of the sort."
+                    "state that you are prompting the model to generate a clothing design for a singular piece. "
+                    "You should format the response as if you were prompting the diffusion model yourself. Do "
+                    "not include any pleasantries or anything of the sort."
 
                     "Your prompt should be strictly limited to 77 tokens."
                 )
@@ -77,14 +77,12 @@ def main():
             }
         ]
     )
-
-    # for testing purposes...
-    print("\nOPENAI RESPONSE\n")
-    print(response.output_text)
+    with open("./outputs/design.txt", "w") as f:
+        f.write(response.output_text)
 
     # send prompt to image generation model
-    pipe = StableDiffusionPipeline.from_pretrained(
-        "runwayml/stable-diffusion-v1-5",
+    pipe = DiffusionPipeline.from_pretrained(
+        "OFA-Sys/small-stable-diffusion-v0",
         dtype=torch.float16
     ).to(device)
     image = pipe(response.output_text).images[0]
