@@ -1,5 +1,9 @@
 .DS_Store
 .env
-/data
-/outputs
+.venv
+/data/custom-data
+/data/df-training-data
+/data/sample.png
 /models
+/outputs/train.csv
+/outputs/val.csv
