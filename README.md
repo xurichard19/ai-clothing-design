@@ -2,6 +2,8 @@
 
 This project aims to analyse current fashion trends and generate 'novel' designs based on emerging trends with the help of artificial intelligence. We first train a contrastive language-image pre-training (CLIP) AI model to recognize fashion-specific features through fine-tuning its abstract visual layers. We then use our trained model to generate embeddings for a sample set of trending fashion images and discover the overarching themes using K-means clustering to select the largest centroid (features) by membership. After finding a single representative embedding for the set, we compare the embedding to a series of captions (using cosine similarity) to find the most fitting captions. Finally, we send this to an LLM model (GPT4o mini) to generate a natural language prompt for the diffusion model (small SD v0).
 
+We focused on having a diverse tech stack for this project, using technologies such as PyTorch, Transformers (HuggingFace), NumPy, scikit-learn, OpenAI API, etc.
+
 ### Usage Instructions
 
 1) create necessary folders for data, structured like so
