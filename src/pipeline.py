@@ -1,8 +1,8 @@
+from diffusers import StableDiffusionPipeline
 from dotenv import load_dotenv
 import json
 import os
 from openai import OpenAI
-from PIL import Image
 import predict
 import torch
 from transformers import CLIPProcessor, CLIPModel
@@ -67,6 +67,8 @@ def main():
                     "state that you are prompting the model to generate a clothing design. You should format the "
                     "response as if you were prompting the diffusion model yourself. Do not include any "
                     "pleasantries or anything of the sort."
+
+                    "Your prompt should be strictly limited to 77 tokens."
                 )
             },
             {
@@ -75,8 +77,19 @@ def main():
             }
         ]
     )
+
+    # for testing purposes...
     print("\nOPENAI RESPONSE\n")
     print(response.output_text)
+
+    # send prompt to image generation model
+    pipe = StableDiffusionPipeline.from_pretrained(
+        "runwayml/stable-diffusion-v1-5",
+        dtype=torch.float16
+    ).to(device)
+    image = pipe(response.output_text).images[0]
+    image.save("./outputs/design.png")
+    print("\nsuccessfully generated image in /outputs/design.png")
 
 if __name__ == "__main__":
     main()
