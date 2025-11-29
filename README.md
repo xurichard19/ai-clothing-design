@@ -14,7 +14,7 @@ We focused on having a diverse tech stack for this project, using technologies s
       > processors
     > data
       > captions
-      > custom-data (any selection of contemporary fashion images, more data == stronger correlations)
+      > custom-data (any selection of contemporary fashion images, more data stronger correlations)
       > df-training-data (DeepFashion dataset)
     > outputs
     > src...
